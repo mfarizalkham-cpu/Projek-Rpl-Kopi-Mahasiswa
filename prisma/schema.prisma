@@ -1,0 +1,330 @@
+// Prisma Schema for Kopi Mahasiswa
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  OWNER
+  KASIR
+  PELANGGAN
+  SUPPLIER
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  QRIS
+  BANK_TRANSFER
+}
+
+enum PurchaseStatus {
+  PENDING
+  RECEIVED
+  CANCELLED
+}
+
+enum StockType {
+  IN
+  OUT
+}
+
+model User {
+  id            String         @id @default(uuid())
+  name          String
+  email         String         @unique
+  password      String
+  role          Role           @default(PELANGGAN)
+  phone         String?
+  avatarUrl     String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  customer      Customer?
+  employee      Employee?
+  supplier      Supplier?
+  notifications Notification[]
+
+  @@map("users")
+}
+
+model Customer {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  address   String?
+  points    Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders    Order[]
+  reviews   Review[]
+
+  @@map("customers")
+}
+
+model Employee {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  position  String
+  salary    Float    @default(0)
+  hireDate  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("employees")
+}
+
+model Supplier {
+  id          String   @id @default(uuid())
+  userId      String?  @unique
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name        String
+  contactName String
+  phone       String
+  email       String
+  address     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  purchases   Purchase[]
+
+  @@map("suppliers")
+}
+
+model Category {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  menus       Menu[]
+
+  @@map("categories")
+}
+
+model Menu {
+  id          String   @id @default(uuid())
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name        String
+  description String
+  price       Float
+  imageUrl    String?
+  isAvailable Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  recipes     Recipe[]
+  orderItems  OrderItem[]
+  reviews     Review[]
+
+  @@map("menus")
+}
+
+model Ingredient {
+  id            String         @id @default(uuid())
+  name          String         @unique
+  unit          String         // e.g., gram, ml, pcs
+  stock         Float          @default(0)
+  minStock      Float          @default(10)
+  costPerUnit   Float          @default(0)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  recipes       Recipe[]
+  purchaseItems PurchaseItem[]
+  stockHistory  StockHistory[]
+
+  @@map("ingredients")
+}
+
+model Recipe {
+  id           String     @id @default(uuid())
+  menuId       String
+  menu         Menu       @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  quantity     Float      // amount used per menu order
+
+  @@unique([menuId, ingredientId])
+  @@map("recipes")
+}
+
+model Order {
+  id           String      @id @default(uuid())
+  orderNumber  String      @unique
+  customerId   String?
+  customer     Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  customerName String
+  status       OrderStatus @default(PENDING)
+  totalAmount  Float
+  notes        String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  orderItems   OrderItem[]
+  payment      Payment?
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String   @id @default(uuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuId    String
+  menu      Menu     @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  quantity  Int
+  price     Float    // price at time of order
+  subtotal  Float
+
+  @@map("order_items")
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  orderId       String        @unique
+  order         Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amount        Float
+  paymentMethod PaymentMethod @default(QRIS)
+  status        PaymentStatus @default(PENDING)
+  paidAt        DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@map("payments")
+}
+
+model Purchase {
+  id             String         @id @default(uuid())
+  purchaseNumber String         @unique
+  supplierId     String
+  supplier       Supplier       @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  totalAmount    Float
+  status         PurchaseStatus @default(PENDING)
+  notes          String?
+  receivedAt     DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  items          PurchaseItem[]
+
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id           String     @id @default(uuid())
+  purchaseId   String
+  purchase     Purchase   @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  quantity     Float
+  unitCost     Float
+  subtotal     Float
+
+  @@map("purchase_items")
+}
+
+model StockHistory {
+  id           String     @id @default(uuid())
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  type         StockType
+  quantity     Float
+  reason       String
+  referenceId  String?
+  createdAt    DateTime   @default(now())
+
+  @@map("stock_history")
+}
+
+model Review {
+  id         String   @id @default(uuid())
+  menuId     String
+  menu       Menu     @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  rating     Int      // 1 to 5
+  comment    String?
+  createdAt  DateTime @default(now())
+
+  @@map("reviews")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String   @db.Text
+  category  String   @default("SYSTEM") // ORDER, PAYMENT, INVENTORY, SYSTEM
+  type      String   @default("INFO")    // ORDER_NEW, ORDER_STATUS, PAYMENT_SUCCESS, LOW_STOCK, SYSTEM_ALERT
+  link      String?
+  metadata  String?  @db.Text
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
+}
+
+model Setting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
+
+enum NotificationChannel {
+  WHATSAPP
+  EMAIL
+}
+
+enum NotificationLogStatus {
+  SUCCESS
+  FAILED
+  PENDING
+}
+
+model NotificationLog {
+  id          String                @id @default(uuid())
+  channel     NotificationChannel
+  type        String                // ORDER_NEW, PAYMENT_SUCCESS, ORDER_PROCESSING, ORDER_COMPLETED, LOW_STOCK, TEST_NOTIFICATION, etc.
+  recipient   String                // Phone number or email address
+  title       String?               // Subject for email or header for WA
+  message     String                @db.Text
+  status      NotificationLogStatus @default(PENDING)
+  error       String?               @db.Text
+  metadata    String?               @db.Text // JSON string for extra data (orderId, amount, etc.)
+  createdAt   DateTime              @default(now())
+
+  @@map("notification_logs")
+}
+
